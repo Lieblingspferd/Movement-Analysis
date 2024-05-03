@@ -1,0 +1,304 @@
+---
+title: "Week 2 - Excercises"
+author: "Annika Hirsch"
+date: '2024-04-26'
+output: 
+  html_document:
+    theme: flatly
+    highlight: tango
+    code_folding: show
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**Remark**: I prefer working with Markdown documents, since I think that they are easier to organise.
+
+```{r Packages}
+library("readr")
+library("sf")
+library("dplyr")
+library("tmap")
+library("tidyr")
+library("ggplot2")
+library("FITfileR")
+
+#update.packages()
+#install.packages("ggplot2")
+```
+
+# Excercise A
+
+## Task 1: Data Import
+
+```{r A Task 1}
+wildschwein_BE <- read_delim("wildschwein_BE_2056.csv", ",")
+
+wildschwein_BE <- st_as_sf(wildschwein_BE, coords = c("E", "N"), crs = 2056)
+
+head(wildschwein_BE)
+```
+
+## Task 2: Overview
+
+```{r A Task2 TimeDiff}
+difftime_secs <- function(later, now){
+    as.numeric(difftime(later, now, units = "secs"))
+}
+
+now <- wildschwein_BE$DatetimeUTC[4]
+later <- wildschwein_BE$DatetimeUTC[400]
+
+print(difftime(later, now))
+```
+Now inspect your data in more detail. Try to answer the following questions:
+
+* How many individuals were tracked?
+* For how long were the individual tracked? Are there gaps?
+* Were all individuals tracked concurrently or sequentially?
+* What is the temporal sampling interval between the locations?
+
+```{r A Task2 Questions, results = 'asis'}
+# Number of individuals:
+no_individuals <- length(unique(wildschwein_BE$TierID))
+print(paste0("There were ", no_individuals, " individuals tracked."))
+
+# Duration of tracking of the individuals
+
+# store IDs of individuals:
+indIDs <- unique(wildschwein_BE$TierID)
+
+# Create a loop that calculates the individual time difference of the first and last entry of each individual
+# I should probably use group by... but I've already done the loop.. 
+for (i in indIDs){
+  subset <- subset(wildschwein_BE, TierID == i)
+  mintime <- min(subset$DatetimeUTC)
+  maxtime <- max(subset$DatetimeUTC)
+  timediff <- difftime(maxtime, mintime, units = "days")
+  print(paste0("The individual with the id ", i, " was tracked over a time interval of ", timediff, " days."))
+  # Add Functions to determine if there were gaps
+  subset$timelag <- difftime_secs(lead(subset$DatetimeUTC), subset$DatetimeUTC)
+  lag_days <- difftime(lead(subset$DatetimeUTC), subset$DatetimeUTC, units = "hours")
+  maxlag <- max(na.omit(lag_days))
+  #print(table(subset$timelag)) # Nice to have, but takes up a lot of space and information not really needed. 
+  print(paste0("The maximum time lag (=gap) of individual ", i, " was ", maxlag, " hours."))
+  plot(table(subset$timelag))
+  # Display the start and end date of each individual to determine if they were recorded concurrently or sequential.
+  print(paste0("The individual ", i, " was recorded from ", mintime, " to ", maxtime))
+}
+
+# Add timelag column
+wildschwein_BE <- wildschwein_BE %>%
+  group_by(TierID) %>%
+  mutate(timelag = difftime_secs(DatetimeUTC, lag(DatetimeUTC)))
+
+# Summary
+wildschwein_BE %>%
+  st_drop_geometry() %>%
+  summarise(mean = mean(timelag, na.rm = TRUE), median = median(timelag, na.rm = TRUE))
+```
+
+There were three individuals tracked. They were tracked for 234.67, 262.66 and 338.58 days. The biggest time gap was 16.77 hours. Considering the timeframe of more than 230 days, these 16 hours do not seem much. The individuals were tracked concurrently. The median of the time lag is around 900 seconds (15 mins). Therefore the temporal sampling interval is roughly 15 minutes. 
+
+## Task 3: Distance between locations
+
+```{r A Task3 Distance}
+later <- lag(wildschwein_BE$geometry)
+now <- wildschwein_BE$geometry
+
+#st_distance(later, now, by_element = TRUE)
+
+distance_by_element <- function(later, now){
+  as.numeric(
+    st_distance(later, now, by_element = TRUE)
+  )
+}
+
+wildschwein_BE <- wildschwein_BE %>% 
+  group_by(TierID) %>%
+  mutate(
+    steplength = distance_by_element(lag(geometry), geometry)
+        )
+
+wildschwein_BE %>%
+  st_drop_geometry() %>%
+  summarise(mean = mean(steplength, na.rm = TRUE), median = median(steplength, na.rm = TRUE))
+  
+```
+
+## Task 4: Deriving distance & speed
+
+```{r A Task4 speed}
+wildschwein_BE$speed <- wildschwein_BE$steplength / wildschwein_BE$timelag
+```
+
+## Task 5: Plausibility Check
+
+```{r A Task5 Plausibility}
+wildschwein_sample <- wildschwein_BE %>%
+  filter(TierName == "Sabi") %>%
+  head(100)
+
+tmap_mode("view")
+
+tm_shape(wildschwein_sample) + 
+  tm_dots()
+```
+
+```{r A Task5 plot}
+wildschwein_sample_line <- wildschwein_sample %>%
+  # dissolve to a MULTIPOINT:
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING")
+
+tmap_options(basemaps = "OpenStreetMap")
+
+tm_shape(wildschwein_sample_line) +
+  tm_lines() +
+  tm_shape(wildschwein_sample) + 
+  tm_dots()
+```
+
+# Excercise B
+
+```{r B data}
+caro <- read_delim("caro60.csv", ",") %>%
+  st_as_sf(coords = c("E","N"), crs = 2056) %>% 
+  select(DatetimeUTC)
+```
+
+## Task 1: Calculate speed at scale 1
+
+```{r B Task1}
+# Timelag
+caro <- caro %>%
+  mutate(timelag1 = difftime_secs(lead(DatetimeUTC), lag(DatetimeUTC)))
+
+# Steplength
+caro <- caro %>% 
+  mutate(steplength1 = distance_by_element(lag(geometry), lead(geometry)))
+
+# Speed
+caro$speed1 <- caro$steplength1 / caro$timelag1
+
+# View: 
+head(caro)
+```
+
+## Task 2: Calculate speed at scale 2
+
+```{r B Task2}
+# Timelag
+caro <- caro %>%
+  mutate(timelag2 = difftime_secs(lead(DatetimeUTC, n = 2), lag(DatetimeUTC, n = 2)))
+
+# Steplength
+caro <- caro %>% 
+  mutate(steplength2 = distance_by_element(lag(geometry, n = 2), lead(geometry, n = 2)))
+
+# Speed
+caro$speed2 <- caro$steplength2 / caro$timelag2
+
+# View: 
+caro %>%
+  st_drop_geometry() %>% 
+  select(timelag2, steplength2, speed2) %>% 
+  head()
+```
+
+## Task 3: Calculate speed at scale 3
+
+```{r B Task3}
+# Timelag
+caro <- caro %>%
+  mutate(timelag3 = difftime_secs(lead(DatetimeUTC, n = 4), lag(DatetimeUTC, n = 4)))
+
+# Steplength
+caro <- caro %>% 
+  mutate(steplength3 = distance_by_element(lag(geometry, n = 4), lead(geometry, n = 4)))
+
+# Speed
+caro$speed3 <- caro$steplength3 / caro$timelag3
+
+# View: 
+caro %>%
+  st_drop_geometry() %>% 
+  select(timelag3, steplength3, speed3) %>% 
+  head()
+
+```
+
+## Task 4: Compare speed across scales
+
+```{r B Task4 long table}
+caro2 <- caro %>% 
+  st_drop_geometry() %>% 
+  select(DatetimeUTC, speed1, speed2, speed3)
+
+caro_long <- caro2 %>%
+  pivot_longer(c(speed1, speed2, speed3))
+  
+head(caro_long)
+```
+
+```{r B Task4 plot}
+ggplot(caro_long, aes(name, value)) +
+  geom_boxplot(outliers = FALSE)
+```
+
+# Excercise C
+
+```{r C loading required package, eval = FALSE}
+#if(!requireNamespace("remotes")) {
+#    install.packages("remotes")
+#}
+#remotes::install_github("grimbough/FITfileR")
+```
+
+```{r C activity data import}
+activity <- readFitFile("kurz_auf_den_harder.fit")
+
+activity
+
+activity_records <- records(activity)
+activity_records
+
+# Does not work the way I want it to. Does not add the distance to the correct rows. 
+#activity_records <- records(activity) %>% 
+#  bind_rows() %>% 
+#  arrange(timestamp)
+
+#activity_records
+```
+
+```{r C mapping}
+# Transform into sf
+activity_sf <- st_as_sf(activity_records[["record_1"]],
+                        coords = c("position_long", "position_lat"),
+                        crs = 4326
+)
+
+# Change crs
+st_transform(activity_sf, crs = 2056)
+
+tmap_mode("view")
+
+# Create a line
+activity_line <- activity_sf %>%
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING")
+
+# Change basemap
+tmap_options(basemaps = "OpenStreetMap")
+
+# Plot map
+tm_shape(activity_line) +
+  tm_lines() #+ # Points are really dense...
+  #tm_shape(activity_sf) + 
+  #tm_dots()
+```
+
+
