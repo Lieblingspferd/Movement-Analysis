@@ -13,9 +13,10 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
 ```
 
-**Remark**: I prefer working with Markdown documents, since I think that they are easier to organise.
+**Remark**: I prefer working with Markdown documents, since I think that they are easier to organize. (This was before getting to know quarto... So I guess Quarto has very similar features)
 
 ```{r Packages}
 library("readr")
