@@ -14,6 +14,7 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
 ```
 
 **Remark**: I prefer working with Markdown documents, since I think that they are easier to organize. (This was before getting to know quarto... So I guess Quarto has very similar features)
@@ -26,9 +27,6 @@ library("tmap")
 library("tidyr")
 library("ggplot2")
 library("FITfileR")
-
-#update.packages()
-#install.packages("ggplot2")
 ```
 
 # Excercise A
@@ -62,7 +60,7 @@ Now inspect your data in more detail. Try to answer the following questions:
 * Were all individuals tracked concurrently or sequentially?
 * What is the temporal sampling interval between the locations?
 
-```{r A Task2 Questions, results = 'asis'}
+```{r A Task2 Questions}
 # Number of individuals:
 no_individuals <- length(unique(wildschwein_BE$TierID))
 print(paste0("There were ", no_individuals, " individuals tracked."))
@@ -252,13 +250,6 @@ ggplot(caro_long, aes(name, value)) +
 
 # Excercise C
 
-```{r C loading required package, eval = FALSE}
-#if(!requireNamespace("remotes")) {
-#    install.packages("remotes")
-#}
-#remotes::install_github("grimbough/FITfileR")
-```
-
 ```{r C activity data import}
 activity <- readFitFile("kurz_auf_den_harder.fit")
 
@@ -266,13 +257,6 @@ activity
 
 activity_records <- records(activity)
 activity_records
-
-# Does not work the way I want it to. Does not add the distance to the correct rows. 
-#activity_records <- records(activity) %>% 
-#  bind_rows() %>% 
-#  arrange(timestamp)
-
-#activity_records
 ```
 
 ```{r C mapping}
@@ -297,9 +281,7 @@ tmap_options(basemaps = "OpenStreetMap")
 
 # Plot map
 tm_shape(activity_line) +
-  tm_lines() #+ # Points are really dense...
-  #tm_shape(activity_sf) + 
-  #tm_dots()
+  tm_lines() 
 ```
 
 
